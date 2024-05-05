@@ -7,6 +7,7 @@
  */
 
 import {inject, Inject, Injectable, Optional} from '@angular/core';
+import {getLocaleFirstDayOfWeek, WeekDay} from "@angular/common";
 import {DateAdapter, MAT_DATE_LOCALE} from './date-adapter';
 
 /**
@@ -25,6 +26,18 @@ function range<T>(length: number, valueFunction: (index: number) => T): T[] {
   }
   return valuesArray;
 }
+
+/**
+ * A record that represents the Intl.Locale WeekInfo proposal.
+ * @see https://tc39.es/proposal-intl-locale-info/#table-locale-weekinfo-record
+ */
+type WeekInfo = { firstDay: WeekDay, weekend: WeekDay[], minimalDays: number };
+
+/**
+ * A vendor-specific extension of the Intl.Locale with weekInfo property or getWeekInfo method.
+ * @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/Locale/getWeekInfo
+ */
+type LocaleEx = Intl.Locale & { weekInfo?: WeekInfo, getWeekInfo?: () => WeekInfo };
 
 /** Adapts the native JS Date for use with cdk-based components that work with dates. */
 @Injectable()
@@ -89,8 +102,18 @@ export class NativeDateAdapter extends DateAdapter<Date> {
   }
 
   getFirstDayOfWeek(): number {
-    // We can't tell using native JS Date what the first day of the week is, we default to Sunday.
-    return 0;
+    // Tries in order:
+    // - The getWeekInfo method of the Intl.Locale object (TC39 proposal)
+    //   @see https://tc39.es/proposal-intl-locale-info/
+    // - The non-standard weekInfo property of the Intl.Locale object
+    //   @see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Intl/Locale/getWeekInfo
+    // - angular getLocaleFirstDayOfWeek
+    // - or returns 1 since it's the most common value through the world.
+    const lc = new Intl.Locale(this.locale) as LocaleEx;
+      return lc.getWeekInfo?.()?.firstDay
+        ?? lc.weekInfo?.firstDay
+        ?? getLocaleFirstDayOfWeek(this.locale)
+        ?? 1;
   }
 
   getNumDaysInMonth(date: Date): number {
